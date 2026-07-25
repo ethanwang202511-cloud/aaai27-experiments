@@ -684,6 +684,7 @@ def main():
         else:
             raise
 
+    model.cfg.use_attn_result = True
     log.info(f"Model loaded: {model_name}")
     log.info(f"  n_layers={model.cfg.n_layers}, n_heads={model.cfg.n_heads}, "
              f"d_model={model.cfg.d_model}")
