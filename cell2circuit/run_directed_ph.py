@@ -441,10 +441,9 @@ def _wasserstein1_fallback(dgm1, dgm2):
 def load_microns_subsets(seed=0):
     """Load MICrONS N=100 subsets. Falls back to synthetic if unavailable."""
     try:
-        sys.path.insert(0, SCRIPTS)
         from exp_powerlaw_vs_ridge import load_microns_subsets as _load
         return _load(seed=seed)
-    except (ImportError, FileNotFoundError):
+    except (ImportError, FileNotFoundError, ModuleNotFoundError):
         print("[DPH] MICrONS loader unavailable. Using synthetic data.",
               flush=True)
         rng = np.random.default_rng(seed)
@@ -723,7 +722,7 @@ def run():
         "walltime_s": elapsed,
     }
 
-    out_dir = os.path.join(CELL2CIRCUIT_ROOT, "results", "aaai27")
+    out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "results", "aaai27")
     os.makedirs(out_dir, exist_ok=True)
     json_path = os.path.join(out_dir, "directed_ph.json")
     with open(json_path, "w") as f:
