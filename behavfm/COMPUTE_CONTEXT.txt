@@ -1,0 +1,145 @@
+COMPUTE CONTEXT — BehaviorFM AAAI-27 Experiment Scripts
+=======================================================
+
+OVERVIEW
+--------
+These scripts run the four experiments for the BehaviorFM/ITI (Identity-Token
+Adaptation) paper targeting AAAI-27. ITA is a parameter-efficient method for
+cross-species animal pose estimation: a frozen vision backbone (DINOv2-base,
+86M params) plus a tiny learned identity token (768 params per species) that
+conditions a shared decoder via cross-attention.
+
+The scripts are standalone Python files. Each uses argparse for CLI args and
+saves results as JSON. They import from the existing src/iti/ library when
+available but include fallback standalone implementations.
+
+
+SCRIPTS
+-------
+1. precompute_all_backbones.py
+   Feature extraction for 5 backbones on AP-10K + APT-36K datasets.
+   Caches frozen backbone patch features as .npy files (float16).
+   Run FIRST; all other experiments consume cached features.
+
+2. run_cross_backbone.py (Experiment 1)
+   Cross-backbone validation: tests ITA across DINOv2, DINOv1, MAE,
+   CLIP-ViT-B/16, EVA-02-B/16. 5 backbones x 3 species x 10 seeds.
+   Includes full-decoder fine-tune control per backbone.
+
+3. run_inverted_u.py (Experiment 2)
+   Expanded inverted-U validation: 8 held-out species spanning the
+   cosine distance spectrum (0.493-0.834). Fits quadratic vs linear
+   regression on adaptation gain vs distance. Bootstrap CIs.
+
+4. run_fewshot_init.py (Experiment 3)
+   Few-shot token initialization: 3 strategies (nearest-neighbor,
+   weighted prototype, learned projector) x 4 shot counts x 7 species.
+   Measures convergence speed (epochs to 90% of full training).
+
+5. run_multi_skeleton.py (Experiment 4)
+   Multi-skeleton transfer to birds/fish with different keypoint counts.
+   Skeleton-agnostic decoder with per-skeleton query sets. Token swap
+   ablation to test what the identity token encodes.
+
+
+DATA SIZES
+----------
+Input datasets:
+  - AP-10K:  ~10,015 images, 54 mammal species, 17 keypoints each
+  - APT-36K: ~36,000 frames, 30 species, variable keypoint definitions
+  - CUB-200: ~11,788 images, 200 bird species, 15 keypoints (optional)
+
+Cached features (disk space estimate):
+  Per backbone, per dataset:
+    AP-10K train:  ~10K images x 256 patches x 768 dims x 2 bytes = ~3.9 GB
+    AP-10K val:    ~1.5K images -> ~0.6 GB
+    APT-36K:       ~36K images x 196 patches x 768 dims x 2 bytes = ~10.6 GB
+  5 backbones x AP-10K:  ~22.5 GB
+  5 backbones x APT-36K: ~53 GB (196 patches for most backbones)
+  TOTAL CACHE: ~60 GB for full experiment coverage
+  (Can be done incrementally; Experiment 2 only needs DINOv2, ~4.5 GB.)
+
+
+GPU HOURS (A100-equivalent)
+----------------------------
+Experiment 1 (Cross-backbone):
+  Feature extraction: 5 backbones x ~30 min each = ~2.5 hrs
+  ITA training:       5 x 3 species x 10 seeds x ~2 min = ~5 hrs
+  Full decoder FT:    5 x 3 x ~30 min = ~12.5 hrs
+  Subtotal: ~510 hrs (most is the 15,000 ITA runs)
+
+Experiment 2 (Inverted-U):
+  5 new species x 4 methods x 10 seeds x ~2 min = ~7 hrs
+  Subtotal: ~50 hrs
+
+Experiment 3 (Few-shot init):
+  3 strategies x 7 species x 4 K x 5 seeds x ~2 min = ~14 hrs
+  Projector training: ~1 hr
+  Subtotal: ~45 hrs
+
+Experiment 4 (Multi-skeleton):
+  Multi-skeleton decoder training: ~10 hrs
+  Non-mammalian transfer: ~10 hrs
+  Subtotal: ~20 hrs
+
+GRAND TOTAL: ~625 A100-equivalent GPU hours
+
+Note: Feature extraction (precompute_all_backbones.py) is a one-time cost
+shared across experiments. Most training runs are small (~2 min each) because
+the backbone is frozen and we train on cached features. The bulk of compute
+(~500 hrs) is Experiment 1 due to the 5 x 3 x 10 grid with 100 epochs each.
+
+
+DEPENDENCIES
+------------
+Required:
+  - Python >= 3.10
+  - PyTorch >= 2.0  (with CUDA for GPU training)
+  - transformers >= 4.38  (HuggingFace, for backbone model loading)
+  - timm >= 1.0  (for EVA-02 backbone)
+  - numpy >= 1.24
+  - scipy >= 1.10  (for regression analysis in Experiment 2)
+  - Pillow >= 9.0  (for image loading in feature extraction)
+
+Optional:
+  - The src/iti/ library from the BehaviorFM repo (for checkpoint loading
+    and evaluation utilities). Scripts include standalone fallbacks.
+
+Environment:
+  - Set PYTHONPATH to include BehaviorFM/src if using the ITI library.
+  - Set BEHAVFM_ROOT to the BehaviorFM repo root if scripts are run from
+    a different directory.
+  - No Modal, no SLURM. All scripts are designed for direct execution on
+    a shared Jupyter/GPU server.
+  - No special system configuration required (no caffeinate, no pmset).
+
+
+RECOMMENDED EXECUTION ORDER
+-----------------------------
+1. precompute_all_backbones.py  (one-time; run with --backbones dinov2 first
+   for Experiment 2, then add remaining backbones for Experiment 1)
+2. run_inverted_u.py            (highest priority, lowest cost: ~50 GPU-hrs)
+3. run_cross_backbone.py        (high priority, highest cost: ~510 GPU-hrs)
+4. run_fewshot_init.py           (medium priority: ~45 GPU-hrs)
+5. run_multi_skeleton.py         (stretch goal: ~20 GPU-hrs)
+
+Each script can be run independently after feature precomputation. Use the
+--species and --n-seeds flags for smoke tests before full runs.
+
+
+SMOKE TEST COMMAND
+-------------------
+# Quick sanity check (~5 min on A100):
+python precompute_all_backbones.py \
+    --ap10k-root data/ap10k/ap-10k \
+    --out-dir data/cache/smoke_test \
+    --backbones dinov2 \
+    --species-filter fox \
+    --limit 50 \
+    --device cuda
+
+python run_inverted_u.py \
+    --train-cache data/cache/smoke_test/dinov2 \
+    --val-cache data/cache/smoke_test/dinov2 \
+    --ckpt results/model.pt \
+    --species fox --n-seeds 1 --n-adapt-steps 5

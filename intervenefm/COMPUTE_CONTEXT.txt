@@ -1,0 +1,85 @@
+InterveneFM AAAI-27 Experiments — Compute Context
+===================================================
+
+Target budget: ~$40-65 GPU-equivalent total (well within $5K remaining).
+Environment: Shared Jupyter notebook (NO Modal, NO SLURM).
+Hardware: Single A10G/A100 or equivalent; most experiments run on CPU.
+
+Datasets
+--------
+- Norman 2019 (CRISPRa K562):         ~100 MB (h5ad), ~89K cells x 33K genes
+  Source: scperturb Zenodo (NormanWeissman2019_filtered.h5ad)
+
+- Replogle K562 essential (CRISPRi):   ~2 GB (h5ad), ~310K cells x 8.5K genes
+  Source: scperturb Zenodo (ReplogleWeissman2022_K562_essential.h5ad)
+
+- Replogle RPE1 essential (CRISPRi):   ~1.5 GB (h5ad), ~250K cells x 8.5K genes
+  Source: scperturb Zenodo (ReplogleWeissman2022_RPE1_essential.h5ad)
+
+- sci-Plex K562 subset (chemical):     ~500 MB (h5ad), ~60K cells (1 cell line)
+  Source: GEO GSE139944 or scperturb Zenodo
+
+Per-Experiment Compute Estimates
+---------------------------------
+Exp 1 (Architecture extension):
+  - SAMS-VAE on Norman + K562:    ~2h A10G ($3-5)
+  - AttentionPert on Norman + K562: ~4h A10G ($6-10)
+  - Biolord on Norman + K562:     ~2h A10G ($3-5)
+  Subtotal: ~$12-20
+
+Exp 2 (Pretrained embeddings):
+  - Feature extraction (GenePT, Geneformer, ESM, scGPT, Gene2Vec): ~1h CPU
+  - CPG training: 6 features x 2 datasets x 3 seeds = 36 runs, ~3 min each = ~2h CPU
+  - GenePert ridge regression: ~10 min CPU
+  Subtotal: ~$0 (all CPU)
+
+Exp 3 (Combinatorial dormancy):
+  - GEARS re-analysis on existing checkpoints: ~30 min CPU
+  - New 1/2 split construction + retraining: ~2h A10G ($3-5)
+  - CPA + CPG on new splits: ~30 min each CPU
+  Subtotal: ~$5-10
+
+Exp 4 (Dose-response, stretch):
+  - CPA on sci-Plex (1 cell line, 50 drugs, 3 seeds): ~4h A10G ($6-10)
+  - CPG-dose hybrid: ~2h A10G ($3-5)
+  - Dose-response diagnostic: ~30 min CPU
+  Subtotal: ~$10-20
+
+Exp 5 (Conditional-helper replication):
+  - Tertile reanalysis of existing results: ~1h CPU
+  - Effect-size distributions: ~15 min CPU
+  Subtotal: ~$0 (all CPU)
+
+TOTAL: ~$27-50 GPU + negligible CPU
+
+Dependencies
+------------
+Core:
+  scanpy>=1.10, anndata>=0.10, torch>=2.2, scipy, scikit-learn, pandas, numpy
+
+Model-specific:
+  cell-gears==0.1.2           # GEARS
+  cpa-tools>=0.8              # Published CPA (optional)
+  torch-geometric>=2.5        # GEARS GNN
+  sams-vae                    # SAMS-VAE (pip install from GitHub)
+  biolord                     # Biolord (pip install biolord)
+  dcor                        # Distance correlation metric
+
+Pretrained embeddings (Exp 2):
+  openai>=1.0                 # GenePT via text-embedding-3-large API
+  transformers>=4.30          # Geneformer, ESM-2
+  gensim                      # Gene2Vec (Word2Vec format)
+  scgpt                       # scGPT gene tokens (or manual extraction)
+
+Data downloads:
+  All datasets auto-download from Zenodo/scperturb on first load.
+  GenePT embeddings: precomputed CSV from GitHub (github.com/yiqunchen/GenePT)
+  Geneformer: Hugging Face model (ctheodoris/Geneformer)
+  Gene2Vec: precomputed from GitHub (jingcheng-du/Gene2Vec)
+
+Reproducibility
+---------------
+  Seeds: {0, 1, 2} for all experiments (3-seed protocol).
+  HVG selection: always on CONTROL cells only (leakage-fixed).
+  DEGs: top-200, computed on observed data BEFORE model query.
+  Bootstrap CIs: 1000 iterations, cluster by gene/pair.

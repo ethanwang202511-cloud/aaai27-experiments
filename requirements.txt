@@ -1,0 +1,35 @@
+torch>=2.0
+numpy
+scipy
+pandas
+matplotlib
+scikit-learn
+tqdm
+
+# BehaviorFM
+transformers
+timm
+Pillow
+torchvision
+
+# Cell2Circuit
+networkx
+pyflagser
+gudhi
+torch_geometric
+
+# Conflict
+transformer_lens
+sae_lens
+
+# InterveneFM
+scanpy
+anndata
+
+# reflex-rlvr
+vllm
+peft
+sympy
+tenacity
+openai
+anthropic

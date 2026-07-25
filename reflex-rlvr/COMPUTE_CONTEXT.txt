@@ -1,0 +1,148 @@
+REFLEX-RLVR AAAI-27 Experiment Compute Budget
+==============================================
+
+Total estimated cost: ~$513 (+$228 for STaR ablation)
+Budget remaining: ~$1,966 of $2,000 ceiling (current spend ~$34)
+
+All experiments fit within budget even with the STaR ablation.
+
+----------------------------------------------------------------------
+Experiment Breakdown
+----------------------------------------------------------------------
+
+Experiment 1: Multi-Seed Consolidation (run_multiseed.py)
+  Cost:     ~$27
+  Hardware: 4x H100 (vLLM inference)
+  Wall:     ~3-4 hours sequential, ~1 hour with parallelism
+  Details:
+    Phase 1a: 7 models x 3 seeds x consistent_corruption   ~$8.40
+    Phase 1b: 7 models x 3 seeds x verdict                 ~$11.55
+    Phase 1c: Qwen2.5-72B x 3 seeds x consistent_corr.     ~$7.23
+  Models: 11 total (Qwen2.5 1.5B/7B/72B base+Instruct,
+          R1-Distill-Qwen 1.5B/7B, R1-Distill-Llama-8B,
+          Llama-3.1-8B, Mistral-7B-v0.3, Gemma-2-9B)
+  Seeds:  1337, 37, 31415, 271828
+
+Experiment 2: STaR Self-Teacher Loop (run_star_loop.py)
+  Cost:     ~$220 (main) + ~$220 (verdict-only ablation) = ~$440
+  Hardware: 4x H100 (generation + LoRA training)
+  Wall:     ~3-4 days total
+  Details per iteration (~$73):
+    Generation (600 problems x 32 chains):              ~$35
+    Verdict filtering (600 x 32 x forward pass):        ~$5
+    LoRA fine-tune (rank-32, effective batch 256):       ~$20-30
+    Evaluation (pass@1, pass@32, MATH-500):             ~$3
+  Model:    Qwen2.5-7B base
+  LoRA:     rank=32, alpha=64, all linear layers, lr=1e-5
+  KL:       0.002 against frozen base
+  Ablation: verdict-only vs SymPy-only filtering
+
+Experiment 3: Frontier API Probe (run_frontier_probe.py)
+  Cost:     ~$3-5 (API costs only, no GPU)
+  Hardware: None (API calls)
+  Wall:     ~30 minutes (rate-limited)
+  Details:
+    GPT-4o (logprobs approach):                         ~$0.50
+    Claude Sonnet (sampling approach, N=20):             ~$2.00
+  Data:     51 AIME problems x 2 conditions
+
+Experiment 4: Step-Level Verification (run_step_level.py)
+  Cost:     ~$17
+  Hardware: 4x H100
+  Wall:     ~2-3 hours
+  Details:
+    Phase 4a: per-token surprise, 3 models x 51 problems: ~$2
+    Phase 4b: verdict-at-step, 3 models x 51 x ~5 steps:  ~$10
+    Phase 4c: PRM comparison (if model available):         ~$5
+  Models:   Qwen2.5-7B-Instruct, Qwen2.5-1.5B, Llama-3.1-8B
+
+Experiment 5: Scaling Law Sweep (run_scaling_sweep.py)
+  Cost:     ~$24 (+$8 optional Llama-3.1-70B cross-family)
+  Hardware: 4x H100 (up to 8x for 72B)
+  Wall:     ~4-6 hours
+  Details:
+    Phase 5a: 6 new models x 2 probes:                    ~$12
+    Phase 5b: Curve fitting (local compute):               $0
+    Phase 5c: Generation gap (6 models x pass@32):         ~$12
+    Phase 5d: Extrapolation (local compute):               $0
+  New models: Qwen2.5-3B/14B/32B (base + Instruct)
+  Existing:   Qwen2.5-1.5B/7B/72B (from prior runs)
+
+----------------------------------------------------------------------
+Model Size Reference
+----------------------------------------------------------------------
+
+Model                              Params    GPU Memory (BF16)
+Qwen2.5-1.5B                      1.5B      ~3 GB
+Qwen2.5-3B                        3B        ~6 GB
+Qwen2.5-7B / 7B-Instruct          7B        ~14 GB
+Gemma-2-9B                        9B        ~18 GB
+Qwen2.5-14B / 14B-Instruct        14B       ~28 GB
+Qwen2.5-32B / 32B-Instruct        32B       ~64 GB
+Qwen2.5-72B                       72B       ~144 GB
+Llama-3.1-8B                      8B        ~16 GB
+Mistral-7B-v0.3                   7B        ~14 GB
+DeepSeek-R1-Distill-Qwen-1.5B     1.5B      ~3 GB
+DeepSeek-R1-Distill-Qwen-7B       7B        ~14 GB
+DeepSeek-R1-Distill-Llama-8B      8B        ~16 GB
+
+----------------------------------------------------------------------
+Data
+----------------------------------------------------------------------
+
+Primary eval set:  51 AIME problems (H_K) where all models have pass@1024=0
+Expanded substrate: 600 AIME problems (for STaR generation)
+Forgetting control: MATH-500 (500 problems from MATH benchmark)
+Training data (SFT): NuminaMath AMC/AIME (4070 problems, disjoint from eval)
+
+----------------------------------------------------------------------
+Dependencies
+----------------------------------------------------------------------
+
+Core:
+  vllm >= 0.6.0        (inference engine)
+  torch >= 2.1          (GPU compute)
+  transformers >= 4.40  (model loading, tokenizer)
+  peft >= 0.10          (LoRA fine-tuning)
+  datasets              (HuggingFace datasets)
+
+Analysis:
+  scipy                 (Wilcoxon tests, curve fitting)
+  numpy                 (numerical compute)
+  sympy                 (answer verification)
+  scikit-learn          (AUROC for step-level)
+
+API (Experiment 3 only):
+  openai                (GPT-4o probes)
+  anthropic             (Claude Sonnet probes)
+  tenacity              (retry with backoff)
+  tqdm                  (progress bars)
+
+----------------------------------------------------------------------
+Execution Order (Recommended)
+----------------------------------------------------------------------
+
+1. Experiment 1 (multi-seed):   Run first, cheapest, closes reviewer gap
+2. Experiment 3 (frontier API): Run alongside Exp 1, no GPU needed
+3. Experiment 5 (scaling law):  Run after Exp 1, uses same infrastructure
+4. Experiment 4 (step-level):   Requires step segmentation code
+5. Experiment 2 (STaR loop):    Last, most expensive, most engineering
+
+----------------------------------------------------------------------
+Cost Rates (RunPod/Lambda spot, 2026-Q1)
+----------------------------------------------------------------------
+
+H100 SXM5:   $2.39/hr
+A100 80GB:   $1.19/hr
+A10G:        $0.65/hr
+
+----------------------------------------------------------------------
+Notes
+----------------------------------------------------------------------
+
+- All scripts are Modal-free, designed for shared Jupyter notebook env
+- vLLM handles inference; PEFT/LoRA handles fine-tuning
+- All randomness is seeded for reproducibility
+- Gemma-2-9B requires gpu_memory_utilization=0.85, max_model_len=2048
+- 72B models require 4x H100 minimum, gpu_memory_utilization=0.85
+- The discrimination_standalone.py library is shared across all scripts
