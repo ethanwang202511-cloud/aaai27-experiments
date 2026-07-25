@@ -74,20 +74,26 @@ def get_device() -> str:
 # ---------------------------------------------------------------------------
 # IOI prompt generation
 # ---------------------------------------------------------------------------
-def generate_ioi_prompts(n: int, seed: int) -> list[dict]:
+def generate_ioi_prompts(n: int, seed: int, model=None) -> list[dict]:
     """Generate IOI prompts:
     'When {IO} and {S} went to the {place}, {IO} gave a gift to'
     correct = IO, incorrect = S.
     """
+    names = NAMES_POOL
+    if model is not None:
+        names = [nm for nm in NAMES_POOL
+                 if model.to_tokens(f" {nm}", prepend_bos=False).shape[-1] == 1]
+        log.info(f"Filtered names to {len(names)} single-token names: {names}")
+        assert len(names) >= 2, f"Need >=2 single-token names, got {len(names)}"
     rng = random.Random(seed)
     prompts = []
     for _ in range(n):
-        io, s = rng.sample(NAMES_POOL, 2)
+        io, s = rng.sample(names, 2)
         place = rng.choice(PLACES_POOL)
         text = f"When {io} and {s} went to the {place}, {io} gave a gift to"
         prompts.append({
             "text": text,
-            "correct": f" {s}",   # IO gave gift TO the Subject
+            "correct": f" {s}",
             "incorrect": f" {io}",
             "io": io,
             "s": s,
@@ -698,7 +704,7 @@ def main():
 
     # ---- Generate IOI prompts ----
     log.info(f"Generating {args.n_prompts} IOI prompts...")
-    prompts = generate_ioi_prompts(args.n_prompts, args.seed)
+    prompts = generate_ioi_prompts(args.n_prompts, args.seed, model=model)
     log.info(f"Example prompt: {prompts[0]['text']}")
     log.info(f"  correct={prompts[0]['correct']!r}, incorrect={prompts[0]['incorrect']!r}")
 
