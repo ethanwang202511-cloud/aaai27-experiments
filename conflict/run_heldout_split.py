@@ -548,6 +548,7 @@ def run_single_cell(
         cell.tl_name,
         device=device,
     )
+    model.cfg.use_attn_result = True
     model.eval()
 
     # --- Generate prompts ---

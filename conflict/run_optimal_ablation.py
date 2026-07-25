@@ -145,6 +145,7 @@ def load_model(model_short: str, device: str) -> HookedTransformer:
     t0 = time.time()
     dtype = torch.float32 if device != "cuda" else torch.bfloat16
     model = HookedTransformer.from_pretrained(tl_name, device=device, dtype=dtype)
+    model.cfg.use_attn_result = True
     model.eval()
     log(f"model ready in {time.time() - t0:.1f}s -- "
         f"n_layers={model.cfg.n_layers}, n_heads={model.cfg.n_heads}, "
