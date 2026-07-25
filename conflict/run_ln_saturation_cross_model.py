@@ -122,6 +122,20 @@ MODEL_CONFIGS = {
         default_batch_size=8,
         norm_type="rmsnorm_pre",
     ),
+    "qwen2": ModelConfig(
+        name="Qwen2.5-1.5B",
+        tl_name="Qwen/Qwen2.5-1.5B",
+        n_layers=28,
+        default_batch_size=16,
+        norm_type="rmsnorm_pre",
+    ),
+    "pythia": ModelConfig(
+        name="Pythia-1B",
+        tl_name="pythia-1b",
+        n_layers=16,
+        default_batch_size=16,
+        norm_type="layernorm_pre",
+    ),
 }
 
 
@@ -536,8 +550,8 @@ def main():
     )
     parser.add_argument(
         "--model",
-        choices=["gemma2", "llama3", "all"],
-        default="gemma2",
+        choices=["gemma2", "llama3", "qwen2", "pythia", "all"],
+        default="qwen2",
         help="Which model to run (default: gemma2)",
     )
     parser.add_argument(
@@ -574,7 +588,7 @@ def main():
     print(f"  Example: '{prompts[0].text}' -> IO={prompts[0].io_name}, S={prompts[0].s_name}")
 
     models_to_run = (
-        ["gemma2", "llama3"] if args.model == "all" else [args.model]
+        list(MODEL_CONFIGS.keys()) if args.model == "all" else [args.model]
     )
 
     all_results = {}
