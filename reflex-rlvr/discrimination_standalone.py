@@ -293,28 +293,9 @@ def create_llm(
     tensor_parallel_size: int | None = None,
     max_model_len: int = 2048,
     gpu_memory_utilization: float = 0.85,
+    **extra_kwargs,
 ) -> Any:
-    """Create a vLLM ``LLM`` instance with standard settings.
-
-    Parameters
-    ----------
-    model_id : str
-        HuggingFace model identifier or local path.
-    seed : int
-        Random seed for the engine.
-    tensor_parallel_size : int or None
-        Number of GPUs for tensor parallelism.  If ``None``, auto-detected
-        via ``torch.cuda.device_count()``.
-    max_model_len : int
-        Maximum sequence length.
-    gpu_memory_utilization : float
-        Fraction of GPU memory to reserve.
-
-    Returns
-    -------
-    vllm.LLM
-        The constructed LLM instance.
-    """
+    """Create a vLLM ``LLM`` instance with standard settings."""
     from vllm import LLM  # type: ignore[import-untyped]
 
     if tensor_parallel_size is None:
@@ -328,6 +309,7 @@ def create_llm(
         tensor_parallel_size=tensor_parallel_size,
         max_model_len=max_model_len,
         gpu_memory_utilization=gpu_memory_utilization,
+        **extra_kwargs,
     )
 
 
