@@ -14,6 +14,7 @@ Usage:
 
 import argparse
 import json
+import math
 import os
 import sys
 import time
@@ -147,6 +148,7 @@ def run_single(
     seed: int,
     problems: list,
     llm,
+    tokenizer,
     output_dir: str,
 ) -> dict:
     """Run one probe for one model at one seed.  Returns a summary dict."""
@@ -154,24 +156,33 @@ def run_single(
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     probe_fn = PROBE_FUNCTIONS[probe]
-    results = probe_fn(llm, problems, seed=seed)
+    result_dict = probe_fn(llm, tokenizer, problems, seed=seed)
+    per_problem = result_dict.get("per_problem", [])
 
     # Write per-problem JSONL
     with open(out_path, "w") as f:
-        for r in results:
+        for r in per_problem:
             f.write(json.dumps(r, default=str) + "\n")
 
-    # Quick aggregate
-    scores = [r.get("score", r.get("accuracy", None)) for r in results]
-    scores = [s for s in scores if s is not None]
+    # Quick aggregate — use the probe's primary signal field
+    _SCORE_FIELDS = {
+        "consistent_corruption": "discrimination_signal",
+        "verdict": "delta_verdict",
+        "per_token_surprise": "local_minus_global",
+    }
+    score_key = _SCORE_FIELDS.get(probe, "score")
+    scores = [r.get(score_key) for r in per_problem
+              if r.get(score_key) is not None and not (
+                  isinstance(r.get(score_key), float) and math.isnan(r[score_key]))]
     mean_score = float(np.mean(scores)) if scores else None
 
     return {
         "model": model_name,
         "probe": probe,
         "seed": seed,
-        "n_problems": len(results),
+        "n_problems": len(per_problem),
         "mean_score": mean_score,
+        "gate_passed": result_dict.get("gate_passed"),
         "output_path": str(out_path),
     }
 
@@ -230,7 +241,7 @@ def run_all(
         kwargs = get_model_kwargs(model_name, tensor_parallel)
         t0 = time.time()
         try:
-            llm = create_llm(model_name, **kwargs)
+            llm, _tokenizer = create_llm(model_name, **kwargs)
         except Exception:
             # For 72B: retry with reduced max_model_len if OOM
             if "72B" in model_name:
@@ -238,7 +249,7 @@ def run_all(
                     "  [warn] Model load failed; retrying with max_model_len=1536 ..."
                 )
                 kwargs["max_model_len"] = 1536
-                llm = create_llm(model_name, **kwargs)
+                llm, _tokenizer = create_llm(model_name, **kwargs)
             else:
                 raise
         load_time = time.time() - t0
@@ -252,7 +263,7 @@ def run_all(
             t1 = time.time()
             try:
                 summary = run_single(
-                    model_name, probe, seed, problems, llm, output_dir
+                    model_name, probe, seed, problems, llm, _tokenizer, output_dir
                 )
                 elapsed = time.time() - t1
                 summary["elapsed_s"] = round(elapsed, 1)
@@ -281,7 +292,7 @@ def run_all(
                 )
 
         # Unload model to free GPU memory
-        del llm
+        del llm, _tokenizer
         try:
             import torch
 

@@ -127,7 +127,7 @@ def compute_per_token_surprise(
     if prompt_lp is None:
         return []
 
-    token_ids = tokenizer.encode(prompt_text)
+    token_ids = tokenizer.encode(prompt_text, add_special_tokens=False)
     surprises: list[float] = []
 
     for idx in range(1, len(prompt_lp)):
@@ -160,7 +160,7 @@ def map_steps_to_token_ranges(
     Returns a list of (start, end) pairs where indices refer to positions in
     the full token sequence.
     """
-    prefix_len = len(tokenizer.encode(prompt_prefix))
+    prefix_len = len(tokenizer.encode(prompt_prefix, add_special_tokens=False))
     ranges: list[tuple[int, int]] = []
     cursor = prefix_len
 
@@ -208,8 +208,8 @@ def find_corrupted_step(
     """Find which step index contains the first token where oracle and
     corrupted differ.  Returns the step index (0-based) or None.
     """
-    oracle_ids = tokenizer.encode(prompt_prefix + oracle_text)
-    corrupt_ids = tokenizer.encode(prompt_prefix + corrupted_text)
+    oracle_ids = tokenizer.encode(prompt_prefix + oracle_text, add_special_tokens=False)
+    corrupt_ids = tokenizer.encode(prompt_prefix + corrupted_text, add_special_tokens=False)
     min_len = min(len(oracle_ids), len(corrupt_ids))
 
     first_diff = None
@@ -453,8 +453,8 @@ def run_phase_4b(
             prompt_o = _VERDICT_AT_STEP_TEMPLATE.format(
                 problem=problem_text, k=k, K=K, solution_prefix=oracle_prefix,
             )
-            logp_yes_o = score_verdict_token(llm, tokenizer, scoring_params, prompt_o, " YES")
-            logp_no_o = score_verdict_token(llm, tokenizer, scoring_params, prompt_o, " NO")
+            logp_yes_o = score_verdict_token(llm, tokenizer, prompt_o, " YES", seed=seed)
+            logp_no_o = score_verdict_token(llm, tokenizer, prompt_o, " NO", seed=seed)
             verdict_o = round(logp_yes_o - logp_no_o, 4)
             oracle_verdicts.append(verdict_o)
 
@@ -465,8 +465,8 @@ def run_phase_4b(
             prompt_c = _VERDICT_AT_STEP_TEMPLATE.format(
                 problem=problem_text, k=k, K=K, solution_prefix=corrupt_prefix,
             )
-            logp_yes_c = score_verdict_token(llm, tokenizer, scoring_params, prompt_c, " YES")
-            logp_no_c = score_verdict_token(llm, tokenizer, scoring_params, prompt_c, " NO")
+            logp_yes_c = score_verdict_token(llm, tokenizer, prompt_c, " YES", seed=seed)
+            logp_no_c = score_verdict_token(llm, tokenizer, prompt_c, " NO", seed=seed)
             verdict_c = round(logp_yes_c - logp_no_c, 4)
             corrupt_verdicts.append(verdict_c)
 
@@ -687,7 +687,7 @@ def main() -> None:
         print(f"  Model loaded in {time.time()-t_load:.1f}s")
 
         # Scoring params -- same trick as discrimination_v2.
-        from vllm import SamplingParams  # noqa: PLC0415
+        from discrimination_standalone import SamplingParams
         scoring_params = SamplingParams(
             prompt_logprobs=0,
             max_tokens=1,

@@ -12,6 +12,7 @@ There are ZERO Modal dependencies in this file.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 import re
@@ -27,11 +28,12 @@ __all__ = [
     "corrupt_solution_one_step",
     # Data loading
     "load_problems",
-    # vLLM helpers
+    # Model helpers
     "create_llm",
     "score_answer",
     "score_verdict_token",
     "verdict_logit",
+    "SamplingParams",
     # Prompt builders
     "build_cot_prompt",
     "build_verdict_prompt",
@@ -283,8 +285,77 @@ def load_problems(jsonl_path: str | Path) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# vLLM helpers (lazy imports)
+# HuggingFace model wrapper (replaces vLLM)
 # ---------------------------------------------------------------------------
+
+
+@dataclasses.dataclass
+class SamplingParams:
+    """Minimal vLLM-compatible SamplingParams for prompt logprob scoring."""
+    prompt_logprobs: int | None = None
+    max_tokens: int = 1
+    temperature: float = 0.0
+    seed: int = 1337
+
+
+@dataclasses.dataclass
+class Logprob:
+    """Minimal vLLM-compatible Logprob container."""
+    logprob: float
+    rank: int | None = None
+    decoded_token: str = ""
+
+
+class RequestOutput:
+    """Minimal vLLM-compatible output container."""
+    def __init__(self, prompt_logprobs):
+        self.prompt_logprobs = prompt_logprobs
+
+
+class HFModel:
+    """Wraps HuggingFace model to provide vLLM-compatible .generate() for
+    prompt logprob scoring."""
+
+    def __init__(self, model, tokenizer, device):
+        self.model = model
+        self.tokenizer = tokenizer
+        self.device = device
+        self.model.eval()
+
+    def generate(self, prompts, params):
+        import torch
+        results = []
+        for prompt_text in prompts:
+            token_ids = self.tokenizer.encode(prompt_text, add_special_tokens=False)
+            input_ids = torch.tensor([token_ids], device=self.device)
+            seq_len = len(token_ids)
+
+            with torch.no_grad():
+                outputs = self.model(input_ids)
+
+            logits = outputs.logits[0]  # (seq_len, vocab_size)
+
+            if params.prompt_logprobs is not None and seq_len > 1:
+                log_probs = torch.log_softmax(logits, dim=-1)
+                next_ids = input_ids[0, 1:].unsqueeze(1)
+                gathered = log_probs[:-1].gather(1, next_ids).squeeze(1)
+                del log_probs
+
+                prompt_lps: list = [None]
+                for i in range(seq_len - 1):
+                    tid = token_ids[i + 1]
+                    lp = gathered[i].item()
+                    prompt_lps.append({tid: Logprob(logprob=lp)})
+            else:
+                prompt_lps = None
+
+            del logits
+            results.append(RequestOutput(prompt_logprobs=prompt_lps))
+
+        return results
+
+    def get_tokenizer(self):
+        return self.tokenizer
 
 
 def create_llm(
@@ -294,23 +365,27 @@ def create_llm(
     max_model_len: int = 2048,
     gpu_memory_utilization: float = 0.85,
     **extra_kwargs,
-) -> Any:
-    """Create a vLLM ``LLM`` instance with standard settings."""
-    from vllm import LLM  # type: ignore[import-untyped]
+) -> tuple:
+    """Load a HuggingFace model and tokenizer, return ``(HFModel, tokenizer)``."""
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    if tensor_parallel_size is None:
-        import torch
+    dtype_str = extra_kwargs.pop("dtype", "bfloat16")
+    trust_remote_code = extra_kwargs.pop("trust_remote_code", False)
+    torch_dtype = getattr(torch, dtype_str, torch.bfloat16)
 
-        tensor_parallel_size = max(torch.cuda.device_count(), 1)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    return LLM(
-        model=model_id,
-        seed=seed,
-        tensor_parallel_size=tensor_parallel_size,
-        max_model_len=max_model_len,
-        gpu_memory_utilization=gpu_memory_utilization,
-        **extra_kwargs,
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_id, trust_remote_code=trust_remote_code,
     )
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id, torch_dtype=torch_dtype,
+        trust_remote_code=trust_remote_code, device_map="auto",
+    )
+
+    hf_model = HFModel(model, tokenizer, device)
+    return hf_model, tokenizer
 
 
 def score_answer(
@@ -345,8 +420,6 @@ def score_answer(
     float
         Mean per-token logprob, or ``float('nan')`` if scoring failed.
     """
-    from vllm import SamplingParams  # type: ignore[import-untyped]
-
     full_text = prompt + answer_string
     answer_token_ids = tokenizer.encode(answer_string, add_special_tokens=False)
     n_answer_tokens = len(answer_token_ids)
@@ -770,8 +843,6 @@ def run_per_token_surprise_probe(
         Summary with ``mean_local_minus_global``, ``pct_positive``,
         ``wilcoxon_pvalue``, ``gate_passed``.
     """
-    from vllm import SamplingParams  # type: ignore[import-untyped]
-
     per_problem: list[dict[str, Any]] = []
     local_surprises: list[float] = []
     global_surprises: list[float] = []
