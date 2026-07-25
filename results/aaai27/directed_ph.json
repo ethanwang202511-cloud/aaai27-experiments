@@ -1,0 +1,70 @@
+{
+  "experiment": "directed_ph_aaai27",
+  "addresses": "AAAI-27 Exp 2: Directed PH via flagser",
+  "library": "pyflagser_directed_weighted",
+  "library_note": "pyflagser directed flag complex (Luetgehetmann et al. 2020) with inter-soma distance filtration",
+  "directed": true,
+  "substrate": "microns_N100",
+  "n_test_subsets": 30,
+  "n_mc_per_subset": 1,
+  "distance_metrics": [
+    "bottleneck_H0",
+    "bottleneck_H1",
+    "wasserstein1_H0",
+    "wasserstein1_H1"
+  ],
+  "filtration": "inter-soma Euclidean distance (edges enter at increasing distance)",
+  "gt_total_h0_points": 3000,
+  "gt_total_h1_points": 3304,
+  "samplers": {
+    "uniform_bernoulli": {
+      "n_subsets": 30,
+      "n_mc_per_subset": 1,
+      "bottleneck_H0_mean": 163.61399230957034,
+      "bottleneck_H0_sem": 15.829908141496553,
+      "bottleneck_H1_mean": 187.222163289388,
+      "bottleneck_H1_sem": 9.796036172443776,
+      "wasserstein1_H0_mean": 5212.659294249215,
+      "wasserstein1_H0_sem": 271.02127071344955,
+      "wasserstein1_H1_mean": 23907.869055430096,
+      "wasserstein1_H1_sem": 2318.150988470223
+    },
+    "uniform+sinkhorn_gt": {
+      "n_subsets": 30,
+      "n_mc_per_subset": 1,
+      "bottleneck_H0_mean": 308.36658772786467,
+      "bottleneck_H0_sem": 17.65412262532908,
+      "bottleneck_H1_mean": 194.14521634419768,
+      "bottleneck_H1_sem": 8.894142786870377,
+      "wasserstein1_H0_mean": 8447.519976806641,
+      "wasserstein1_H0_sem": 573.0814568380855,
+      "wasserstein1_H1_mean": 25125.947702280675,
+      "wasserstein1_H1_sem": 3039.676204137435
+    },
+    "uniform+sinkhorn_rf": {
+      "n_subsets": 30,
+      "n_mc_per_subset": 1,
+      "bottleneck_H0_mean": 182.50429402669272,
+      "bottleneck_H0_sem": 22.64026066978078,
+      "bottleneck_H1_mean": 215.73089228312176,
+      "bottleneck_H1_sem": 11.97172926189103,
+      "wasserstein1_H0_mean": 5649.705148557027,
+      "wasserstein1_H0_sem": 432.50852056949265,
+      "wasserstein1_H1_mean": 27249.478378601074,
+      "wasserstein1_H1_sem": 2765.6673820346064
+    },
+    "config_model_gt": {
+      "n_subsets": 30,
+      "n_mc_per_subset": 1,
+      "bottleneck_H0_mean": 160.60106135050458,
+      "bottleneck_H0_sem": 16.634969489570334,
+      "bottleneck_H1_mean": 158.94673894246418,
+      "bottleneck_H1_sem": 8.001418607490177,
+      "wasserstein1_H0_mean": 4976.737277132671,
+      "wasserstein1_H0_sem": 301.356754556137,
+      "wasserstein1_H1_mean": 22203.708616892498,
+      "wasserstein1_H1_sem": 2645.652641186059
+    }
+  },
+  "walltime_s": 179.07214307785034
+}
