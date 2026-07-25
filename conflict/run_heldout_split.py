@@ -338,6 +338,7 @@ def collect_mean_activations(
     hook_names = list({c.hook_name for c in circuit})
     means: dict[str, torch.Tensor] = {}
     counts = 0
+    max_seq = 0
 
     texts = [p.text for p in prompts]
     for batch_start in range(0, len(prompts), batch_size):
@@ -347,12 +348,25 @@ def collect_mean_activations(
             tokens, names_filter=lambda name: name in hook_names
         )
         bs = tokens.shape[0]
+        seq_len = tokens.shape[1]
         for name in hook_names:
-            act = cache[name].detach().float().sum(dim=0)  # sum over batch
+            act = cache[name].detach().float()  # [batch, seq, ...]
+            act_sum = act.sum(dim=0)  # [seq, ...]
             if name not in means:
-                means[name] = act
+                means[name] = act_sum
+                max_seq = seq_len
             else:
-                means[name] = means[name] + act
+                cur = means[name]
+                cur_s = cur.shape[0]
+                new_s = act_sum.shape[0]
+                if new_s > cur_s:
+                    pad = torch.zeros(new_s - cur_s, *cur.shape[1:], device=cur.device)
+                    cur = torch.cat([cur, pad], dim=0)
+                    max_seq = new_s
+                elif cur_s > new_s:
+                    pad = torch.zeros(cur_s - new_s, *act_sum.shape[1:], device=act_sum.device)
+                    act_sum = torch.cat([act_sum, pad], dim=0)
+                means[name] = cur + act_sum
         counts += bs
         del cache
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
