@@ -20,22 +20,80 @@ import time
 import warnings
 import numpy as np
 
-# ---------------------------------------------------------------------------
-# Path setup
-# ---------------------------------------------------------------------------
-HERE = os.path.dirname(os.path.abspath(__file__))
-CELL2CIRCUIT_ROOT = os.path.abspath(
-    os.path.join(HERE, "..", "..", "..", "..", "Cell2Circuit")
-)
-SRC = os.path.join(CELL2CIRCUIT_ROOT, "src")
-SCRIPTS = os.path.join(CELL2CIRCUIT_ROOT, "scripts")
-for p in (SRC, SCRIPTS):
-    if p not in sys.path:
-        sys.path.insert(0, p)
-
-from analysis.degree_constrained_ablation import sinkhorn_degree_match
-from analysis.rigorous_reeval import configuration_model_sample
+import networkx as nx
 from sklearn.ensemble import RandomForestRegressor
+
+
+# ---------------------------------------------------------------------------
+# Inlined helpers (from Cell2Circuit src/analysis/)
+# ---------------------------------------------------------------------------
+
+def er_graph(N: int, density: float, seed: int) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    a = (rng.random((N, N)) < density).astype(np.float32)
+    np.fill_diagonal(a, 0)
+    return a
+
+
+def sinkhorn_degree_match(
+    probs: np.ndarray, out_deg: np.ndarray, in_deg: np.ndarray,
+    num_iters: int = 50, eps: float = 1e-8,
+) -> np.ndarray:
+    P = probs.copy().astype(np.float64)
+    np.fill_diagonal(P, 0)
+    for _ in range(num_iters):
+        row_sums = P.sum(axis=1, keepdims=True).clip(eps)
+        P = P * (out_deg[:, None] / row_sums)
+        P = np.clip(P, 0, 1)
+        col_sums = P.sum(axis=0, keepdims=True).clip(eps)
+        P = P * (in_deg[None, :] / col_sums)
+        P = np.clip(P, 0, 1)
+    return P.astype(np.float32)
+
+
+def configuration_model_sample(adj: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    adj = (adj > 0.5).astype(np.int32)
+    N = adj.shape[0]
+    in_deg = adj.sum(axis=0).astype(int).tolist()
+    out_deg = adj.sum(axis=1).astype(int).tolist()
+    if sum(in_deg) == 0 or sum(out_deg) == 0:
+        return np.zeros((N, N), dtype=np.float32)
+    if sum(in_deg) != sum(out_deg):
+        diff = sum(out_deg) - sum(in_deg)
+        if diff > 0:
+            order = np.argsort(out_deg)[::-1]
+            i = 0
+            while diff > 0 and i < len(order):
+                if out_deg[order[i]] > 0:
+                    out_deg[order[i]] -= 1
+                    diff -= 1
+                i = (i + 1) % len(order)
+        else:
+            diff = -diff
+            order = np.argsort(in_deg)[::-1]
+            i = 0
+            while diff > 0 and i < len(order):
+                if in_deg[order[i]] > 0:
+                    in_deg[order[i]] -= 1
+                    diff -= 1
+                i = (i + 1) % len(order)
+    seed = int(rng.integers(0, 1 << 30))
+    try:
+        G = nx.directed_configuration_model(
+            in_degree_sequence=in_deg,
+            out_degree_sequence=out_deg,
+            create_using=nx.MultiDiGraph,
+            seed=seed,
+        )
+        G = nx.DiGraph(G)
+        G.remove_edges_from(nx.selfloop_edges(G))
+        out = np.zeros((N, N), dtype=np.float32)
+        for u, v in G.edges():
+            out[u, v] = 1.0
+        return out
+    except Exception:
+        d = float(adj.mean())
+        return er_graph(N, d, seed=seed)
 
 # ---------------------------------------------------------------------------
 # Library detection
